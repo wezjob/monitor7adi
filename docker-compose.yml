@@ -34,7 +34,9 @@ services:
       - OLLAMA_URL=http://host.docker.internal:11434
       # API Keys (set these in .env file)
       - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
-      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-FF9LEDHPzsNMTwUiTyrl39nKklgJxnCv}
+      - CENSYS_API_ID=${CENSYS_API_ID:-}
+      - CENSYS_API_SECRET=${CENSYS_API_SECRET:-}
       - MISP_API_KEY=${MISP_API_KEY:-}
       - OTX_API_KEY=${OTX_API_KEY:-}
     restart: unless-stopped

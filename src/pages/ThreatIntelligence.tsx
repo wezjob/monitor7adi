@@ -94,41 +94,54 @@ export function ThreatIntelligence() {
     setTimeout(() => setCopiedUrl(null), 2000);
   }, []);
 
-  // Perform URL search
+  // API base URL for backend
+  const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+    ? 'http://localhost:3201'
+    : '';
+
+  // Perform URL search via real APIs
   const performUrlSearch = useCallback(async () => {
     if (!urlKeyword.trim()) return;
-    
     setIsSearchingUrls(true);
     setUrlResults([]);
     setUrlSearchLogs([]);
-    
     const addLog = (log: string) => setUrlSearchLogs(prev => [...prev, log]);
-    
-    addLog(`🔍 Recherche réelle d'URLs contenant : "${urlKeyword}"`);
+    addLog(`Recherche mondiale URLs contenant : "${urlKeyword}"`);
+    addLog('Interrogation de crt.sh, urlscan.io, Shodan, Censys...');
     try {
-      const resp = await axios.get(`/api/threat-intel/urlsearch?keyword=${encodeURIComponent(urlKeyword)}`);
-      if (resp.data && Array.isArray(resp.data.results)) {
+      const resp = await axios.get(`${API_BASE}/api/threat-intel/urlsearch?keyword=${encodeURIComponent(urlKeyword)}`, { timeout: 60000 });
+      if (resp.data && Array.isArray(resp.data.results) && resp.data.results.length > 0) {
+        const bySource: Record<string, number> = {};
+        resp.data.results.forEach((r: any) => { bySource[r.source] = (bySource[r.source] || 0) + 1; });
+        for (const [src, count] of Object.entries(bySource)) {
+          addLog(`  ${src}: ${count} URLs`);
+        }
         setUrlResults(resp.data.results.map((r: any, i: number) => ({
           id: `url-${i}`,
           url: r.url,
           domain: r.domain,
           source: r.source,
-          threatType: 'suspicious',
+          threatType: 'suspicious' as const,
           confidence: 80,
           firstSeen: '',
           lastSeen: '',
-          tags: [],
-          description: `URL trouvée via ${r.source}`
+          tags: r.info ? [r.info] : [],
+          description: `URL contenant "${urlKeyword}" via ${r.source}`,
         })));
-        addLog(`✅ Recherche terminée : ${resp.data.results.length} URLs trouvées.`);
+        addLog(`Recherche terminee : ${resp.data.count} URLs au total`);
       } else {
-        addLog('Aucun résultat trouvé.');
+        addLog('Aucun resultat trouve pour ce mot-cle.');
+      }
+      if (resp.data?.errors) {
+        for (const err of resp.data.errors) { addLog(`Warning: ${err}`); }
       }
     } catch (e: any) {
-      addLog('Erreur lors de la recherche d’URLs réelles.');
+      const msg = e.response?.data?.error || e.message || 'Erreur inconnue';
+      addLog(`Erreur: ${msg}`);
+      addLog('Verifiez que API backend est demarree (port 3201).');
     }
     setIsSearchingUrls(false);
-  }, [urlKeyword]);
+  }, [urlKeyword, API_BASE]);
 
   const filteredThreats = mockThreats.filter(threat => {
     const matchesSearch = threat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||

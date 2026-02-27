@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { logger } from '../utils/logger.js';
-import { searchCensys, searchShodan } from '../services/urlSearch.js';
+import { searchCensys, searchShodan, searchCrtSh, searchUrlscan, searchHackerTarget } from '../services/urlSearch.js';
 
 const router = Router();
 
@@ -121,7 +121,7 @@ router.get('/virustotal/:type/:value', async (req, res) => {
   }
 });
 
-// Real URL search (Censys + Shodan)
+// Real URL search (crt.sh + urlscan.io + Shodan + Censys)
 router.get('/urlsearch', async (req, res) => {
   try {
     const { keyword } = req.query;
@@ -131,27 +131,76 @@ router.get('/urlsearch', async (req, res) => {
     const censysId = process.env.CENSYS_API_ID || '';
     const censysSecret = process.env.CENSYS_API_SECRET || '';
     const shodanKey = process.env.SHODAN_API_KEY || '';
-    let results: { url: string; domain: string; source: string }[] = [];
-    // Censys
-    if (censysId && censysSecret) {
-      try {
-        const censysResults = await searchCensys(keyword, censysId, censysSecret);
-        results = results.concat(censysResults.map(r => ({ ...r, source: 'Censys' })));
-      } catch (e) { logger.error('Censys search error', e); }
+    let results: { url: string; domain: string; source: string; info?: string }[] = [];
+    const errors: string[] = [];
+
+    // crt.sh (free, no key)
+    try {
+      logger.info(`[urlsearch] Querying crt.sh for "${keyword}"...`);
+      const crtResults = await searchCrtSh(keyword);
+      results = results.concat(crtResults.map(r => ({ ...r, source: 'crt.sh' })));
+      logger.info(`[urlsearch] crt.sh: ${crtResults.length} results`);
+    } catch (e: any) {
+      errors.push(`crt.sh: ${e.message}`);
+      logger.error('crt.sh search error', e.message);
     }
-    // Shodan
+
+    // urlscan.io (free, no key)
+    try {
+      logger.info(`[urlsearch] Querying urlscan.io for "${keyword}"...`);
+      const urlscanResults = await searchUrlscan(keyword);
+      results = results.concat(urlscanResults.map(r => ({ ...r, source: 'urlscan.io' })));
+      logger.info(`[urlsearch] urlscan.io: ${urlscanResults.length} results`);
+    } catch (e: any) {
+      errors.push(`urlscan.io: ${e.message}`);
+      logger.error('urlscan.io search error', e.message);
+    }
+
+    // HackerTarget (free, no key)
+    try {
+      logger.info(`[urlsearch] Querying HackerTarget for "${keyword}"...`);
+      const htResults = await searchHackerTarget(keyword);
+      results = results.concat(htResults.map(r => ({ ...r, source: 'HackerTarget' })));
+      logger.info(`[urlsearch] HackerTarget: ${htResults.length} results`);
+    } catch (e: any) {
+      errors.push(`HackerTarget: ${e.message}`);
+      logger.error('HackerTarget search error', e.message);
+    }
+
+    // Shodan (API key)
     if (shodanKey) {
       try {
+        logger.info(`[urlsearch] Querying Shodan for "${keyword}"...`);
         const shodanResults = await searchShodan(keyword, shodanKey);
         results = results.concat(shodanResults.map(r => ({ ...r, source: 'Shodan' })));
-      } catch (e) { logger.error('Shodan search error', e); }
+        logger.info(`[urlsearch] Shodan: ${shodanResults.length} results`);
+      } catch (e: any) {
+        errors.push(`Shodan: ${e.message}`);
+        logger.error('Shodan search error', e.message);
+      }
     }
+
+    // Censys (API key)
+    if (censysId && censysSecret) {
+      try {
+        logger.info(`[urlsearch] Querying Censys for "${keyword}"...`);
+        const censysResults = await searchCensys(keyword, censysId, censysSecret);
+        results = results.concat(censysResults.map(r => ({ ...r, source: 'Censys' })));
+        logger.info(`[urlsearch] Censys: ${censysResults.length} results`);
+      } catch (e: any) {
+        errors.push(`Censys: ${e.message}`);
+        logger.error('Censys search error', e.message);
+      }
+    }
+
     // Deduplicate by url
     const deduped = Object.values(results.reduce((acc, cur) => {
       acc[cur.url] = cur;
       return acc;
     }, {} as Record<string, typeof results[0]>));
-    res.json({ count: deduped.length, results: deduped });
+
+    logger.info(`[urlsearch] Total: ${deduped.length} deduplicated results for "${keyword}"`);
+    res.json({ count: deduped.length, results: deduped, errors: errors.length > 0 ? errors : undefined });
   } catch (error) {
     logger.error('Error in urlsearch', error);
     res.status(500).json({ error: 'Failed to search URLs' });
