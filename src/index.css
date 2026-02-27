@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0a0e17 0%, #111827 50%, #0a0e17 100%);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: #111827;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #374151;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #4b5563;
+}
+
+/* Glowing effects */
+.glow-green {
+  box-shadow: 0 0 10px rgba(0, 255, 136, 0.3);
+}
+
+.glow-red {
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.3);
+}
+
+.glow-yellow {
+  box-shadow: 0 0 10px rgba(251, 191, 36, 0.3);
+}
+
+/* Card styles */
+.cyber-card {
+  @apply bg-cyber-card border border-cyber-border rounded-xl p-4 backdrop-blur-sm;
+  background: linear-gradient(135deg, rgba(17, 24, 39, 0.9) 0%, rgba(31, 41, 55, 0.8) 100%);
+}
+
+/* Animated border */
+.animated-border {
+  position: relative;
+  overflow: hidden;
+}
+
+.animated-border::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(90deg, #00ff88, #3b82f6, #8b5cf6, #00ff88);
+  background-size: 300% 300%;
+  animation: gradient-shift 4s ease infinite;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+}
+
+@keyframes gradient-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+/* Status indicators */
+.status-online {
+  @apply w-2 h-2 rounded-full bg-green-500;
+  animation: pulse 2s infinite;
+}
+
+.status-offline {
+  @apply w-2 h-2 rounded-full bg-red-500;
+}
+
+.status-warning {
+  @apply w-2 h-2 rounded-full bg-yellow-500;
+  animation: pulse 1s infinite;
+}
+
+/* Terminal style text */
+.terminal-text {
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+}
+
+/* Threat level badges */
+.threat-critical {
+  @apply bg-red-500/20 text-red-400 border border-red-500/50;
+}
+
+.threat-high {
+  @apply bg-orange-500/20 text-orange-400 border border-orange-500/50;
+}
+
+.threat-medium {
+  @apply bg-yellow-500/20 text-yellow-400 border border-yellow-500/50;
+}
+
+.threat-low {
+  @apply bg-blue-500/20 text-blue-400 border border-blue-500/50;
+}
+
+.threat-info {
+  @apply bg-gray-500/20 text-gray-400 border border-gray-500/50;
+}

@@ -1,0 +1,88 @@
+version: '3.8'
+
+services:
+  # Monitor7adi Frontend
+  monitor7adi:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: monitor7adi
+    ports:
+      - "3200:3100"
+    restart: unless-stopped
+    networks:
+      - monitor7adi-network
+    depends_on:
+      - redis
+      - api
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.monitor7adi.rule=Host(`monitor7adi.localhost`)"
+
+  # Backend API Service
+  api:
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+    container_name: monitor7adi-api
+    ports:
+      - "3201:3101"
+    environment:
+      - NODE_ENV=production
+      - REDIS_URL=redis://redis:6379
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - OLLAMA_URL=http://host.docker.internal:11434
+      # API Keys (set these in .env file)
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY:-}
+      - SHODAN_API_KEY=${SHODAN_API_KEY:-}
+      - MISP_API_KEY=${MISP_API_KEY:-}
+      - OTX_API_KEY=${OTX_API_KEY:-}
+    restart: unless-stopped
+    networks:
+      - monitor7adi-network
+    depends_on:
+      - redis
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  # Redis for caching
+  redis:
+    image: redis:7-alpine
+    container_name: monitor7adi-redis
+    ports:
+      - "6381:6379"
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    networks:
+      - monitor7adi-network
+    command: redis-server --appendonly yes
+
+  # Ollama for local AI (optional, can use existing instance)
+  ollama:
+    image: ollama/ollama:latest
+    container_name: monitor7adi-ollama
+    ports:
+      - "11435:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    restart: unless-stopped
+    networks:
+      - monitor7adi-network
+    profiles:
+      - ai
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+
+networks:
+  monitor7adi-network:
+    driver: bridge
+
+volumes:
+  redis-data:
+  ollama-data:
