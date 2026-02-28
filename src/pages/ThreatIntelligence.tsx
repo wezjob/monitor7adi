@@ -107,9 +107,9 @@ export function ThreatIntelligence() {
     setUrlSearchLogs([]);
     const addLog = (log: string) => setUrlSearchLogs(prev => [...prev, log]);
     addLog(`Recherche mondiale URLs contenant : "${urlKeyword}"`);
-    addLog('Interrogation de crt.sh, urlscan.io, Shodan, Censys...');
+    addLog('Interrogation de 8 sources : crt.sh, urlscan.io, HackerTarget, Wayback Machine, AlienVault OTX, CommonCrawl, Shodan, Censys...');
     try {
-      const resp = await axios.get(`${API_BASE}/api/threat-intel/urlsearch?keyword=${encodeURIComponent(urlKeyword)}`, { timeout: 60000 });
+      const resp = await axios.get(`${API_BASE}/api/threat-intel/urlsearch?keyword=${encodeURIComponent(urlKeyword)}`, { timeout: 90000 });
       if (resp.data && Array.isArray(resp.data.results) && resp.data.results.length > 0) {
         const bySource: Record<string, number> = {};
         resp.data.results.forEach((r: any) => { bySource[r.source] = (bySource[r.source] || 0) + 1; });

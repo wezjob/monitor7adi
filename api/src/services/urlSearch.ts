@@ -7,7 +7,7 @@ export interface UrlResult {
   info?: string;
 }
 
-// crt.sh - Free Certificate Transparency search (no API key needed)
+// ─── 1. crt.sh — Certificate Transparency (free, no key) ───
 export async function searchCrtSh(keyword: string): Promise<UrlResult[]> {
   const results: UrlResult[] = [];
   try {
@@ -17,11 +17,10 @@ export async function searchCrtSh(keyword: string): Promise<UrlResult[]> {
     );
     if (Array.isArray(resp.data)) {
       const seen = new Set<string>();
-      for (const entry of resp.data.slice(0, 200)) {
+      for (const entry of resp.data.slice(0, 300)) {
         const names = (entry.name_value || '').split('\n');
         const commonName = entry.common_name || '';
-        const allNames = [...names, commonName];
-        for (const raw of allNames) {
+        for (const raw of [...names, commonName]) {
           const domain = raw.toLowerCase().trim();
           if (domain && domain.includes(keyword.toLowerCase()) && !seen.has(domain) && !domain.startsWith('*')) {
             seen.add(domain);
@@ -29,21 +28,21 @@ export async function searchCrtSh(keyword: string): Promise<UrlResult[]> {
               url: `https://${domain}`,
               domain,
               source: 'crt.sh',
-              info: entry.issuer_name ? `Issuer: ${entry.issuer_name}` : undefined,
+              info: entry.issuer_name ? `Cert: ${entry.issuer_name.slice(0, 60)}` : undefined,
             });
           }
         }
       }
     }
-    console.log(`[crt.sh] Found ${results.length} results for "${keyword}"`);
+    console.log(`[crt.sh] ${results.length} results`);
   } catch (e: any) {
-    console.error(`[crt.sh] Error: ${e.message}`);
+    console.error(`[crt.sh] ${e.message}`);
     throw new Error(`crt.sh: ${e.message}`);
   }
   return results;
 }
 
-// urlscan.io - Free public search (no API key needed for search)
+// ─── 2. urlscan.io — Public URL scans (free, no key) ───
 export async function searchUrlscan(keyword: string): Promise<UrlResult[]> {
   const results: UrlResult[] = [];
   try {
@@ -62,32 +61,33 @@ export async function searchUrlscan(keyword: string): Promise<UrlResult[]> {
             url: pageUrl,
             domain,
             source: 'urlscan.io',
-            info: r.page?.server || r.page?.title || undefined,
+            info: r.page?.title || r.page?.server || undefined,
           });
         }
       }
     }
-    console.log(`[urlscan.io] Found ${results.length} results for "${keyword}"`);
+    console.log(`[urlscan.io] ${results.length} results`);
   } catch (e: any) {
-    console.error(`[urlscan.io] Error: ${e.message}`);
+    console.error(`[urlscan.io] ${e.message}`);
     throw new Error(`urlscan.io: ${e.message}`);
   }
   return results;
 }
 
-// HackerTarget - Free subdomain search (no API key)
+// ─── 3. HackerTarget — Subdomain enumeration (free, no key) ───
 export async function searchHackerTarget(keyword: string): Promise<UrlResult[]> {
   const results: UrlResult[] = [];
   try {
-    const resp = await axios.get(`https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(keyword)}`, {
-      timeout: 15000,
-    });
-    if (typeof resp.data === 'string' && !resp.data.includes('error')) {
+    const resp = await axios.get(
+      `https://api.hackertarget.com/hostsearch/?q=${encodeURIComponent(keyword)}`,
+      { timeout: 15000 }
+    );
+    if (typeof resp.data === 'string' && !resp.data.includes('error') && !resp.data.includes('API count')) {
       const lines = resp.data.trim().split('\n');
       const seen = new Set<string>();
-      for (const line of lines.slice(0, 100)) {
+      for (const line of lines.slice(0, 200)) {
         const [host, ip] = line.split(',');
-        if (host && host.includes(keyword.toLowerCase()) && !seen.has(host.trim())) {
+        if (host && !seen.has(host.trim())) {
           seen.add(host.trim());
           results.push({
             url: `https://${host.trim()}`,
@@ -98,19 +98,198 @@ export async function searchHackerTarget(keyword: string): Promise<UrlResult[]> 
         }
       }
     }
-    console.log(`[HackerTarget] Found ${results.length} results for "${keyword}"`);
+    console.log(`[HackerTarget] ${results.length} results`);
   } catch (e: any) {
-    console.error(`[HackerTarget] Error: ${e.message}`);
+    console.error(`[HackerTarget] ${e.message}`);
     throw new Error(`HackerTarget: ${e.message}`);
   }
   return results;
 }
 
-// Shodan search - uses /dns/domain which works on free tier
+// ─── 4. Wayback Machine CDX — All archived URLs ever (free, no key) ───
+export async function searchWaybackMachine(keyword: string): Promise<UrlResult[]> {
+  const results: UrlResult[] = [];
+  try {
+    // CDX API: use matchType=domain to find all pages from domains matching keyword
+    // Also try keyword as prefix for broader results
+    const queries = [
+      { url: keyword, matchType: 'domain' },
+      { url: `${keyword}.`, matchType: 'prefix' },
+    ];
+    let allData: any[] = [];
+    for (const q of queries) {
+      try {
+        const r = await axios.get('https://web.archive.org/cdx/search/cdx', {
+          params: { ...q, output: 'json', limit: 150, fl: 'original,timestamp', collapse: 'urlkey' },
+          timeout: 20000,
+        });
+        if (Array.isArray(r.data) && r.data.length > 1) {
+          allData = allData.concat(r.data.slice(1));
+        }
+      } catch {}
+    }
+    const resp = { data: [['original','timestamp'], ...allData] };
+    if (Array.isArray(resp.data) && resp.data.length > 1) {
+      const seen = new Set<string>();
+      // First row is headers: ["original","timestamp","statuscode"]
+      for (const row of resp.data.slice(1)) {
+        const originalUrl = row[0];
+        const timestamp = row[1];
+        if (originalUrl && !seen.has(originalUrl)) {
+          seen.add(originalUrl);
+          let domain = '';
+          try { domain = new URL(originalUrl).hostname; } catch { domain = originalUrl; }
+          const year = timestamp ? timestamp.substring(0, 4) : '';
+          results.push({
+            url: originalUrl,
+            domain,
+            source: 'Wayback Machine',
+            info: year ? `Archived: ${year}` : undefined,
+          });
+        }
+      }
+    }
+    console.log(`[Wayback] ${results.length} results`);
+  } catch (e: any) {
+    console.error(`[Wayback] ${e.message}`);
+    throw new Error(`Wayback Machine: ${e.message}`);
+  }
+  return results;
+}
+
+// ─── 5. RapidDNS — Subdomain enumeration (free, no key) ───
+export async function searchRapidDNS(keyword: string): Promise<UrlResult[]> {
+  const results: UrlResult[] = [];
+  try {
+    const resp = await axios.get(`https://rapiddns.io/subdomain/${encodeURIComponent(keyword)}?full=1`, {
+      timeout: 15000,
+      headers: { 'User-Agent': 'Mozilla/5.0', Accept: 'text/html' },
+    });
+    if (typeof resp.data === 'string') {
+      // Parse HTML table rows for subdomains
+      const regex = /td>([a-zA-Z0-9][a-zA-Z0-9._-]+\.[a-zA-Z]{2,})<\/td/g;
+      const seen = new Set<string>();
+      let match;
+      while ((match = regex.exec(resp.data)) !== null) {
+        const domain = match[1].toLowerCase().trim();
+        if (domain.includes(keyword.toLowerCase()) && !seen.has(domain)) {
+          seen.add(domain);
+          results.push({
+            url: `https://${domain}`,
+            domain,
+            source: 'RapidDNS',
+          });
+        }
+      }
+    }
+    console.log(`[RapidDNS] ${results.length} results`);
+  } catch (e: any) {
+    console.error(`[RapidDNS] ${e.message}`);
+    throw new Error(`RapidDNS: ${e.message}`);
+  }
+  return results;
+}
+
+// ─── 6. AlienVault OTX — Threat intel (free, public indicator search) ───
+export async function searchOTX(keyword: string): Promise<UrlResult[]> {
+  const results: UrlResult[] = [];
+  try {
+    // Use the public indicator URL list for a domain (works without API key)
+    const resp = await axios.get(
+      `https://otx.alienvault.com/api/v1/indicators/domain/${encodeURIComponent(keyword)}/url_list`,
+      { timeout: 15000, headers: { Accept: 'application/json' } }
+    );
+    if (resp.data && Array.isArray(resp.data.url_list)) {
+      const seen = new Set<string>();
+      for (const entry of resp.data.url_list.slice(0, 200)) {
+        const url = entry.url;
+        if (url && !seen.has(url)) {
+          seen.add(url);
+          let domain = keyword;
+          try { domain = new URL(url).hostname; } catch {}
+          results.push({
+            url,
+            domain,
+            source: 'AlienVault OTX',
+            info: entry.httpcode ? `HTTP ${entry.httpcode}` : undefined,
+          });
+        }
+      }
+    }
+    console.log(`[OTX] ${results.length} results`);
+  } catch (e: any) {
+    console.error(`[OTX] ${e.message}`);
+    throw new Error(`AlienVault OTX: ${e.message}`);
+  }
+  return results;
+}
+
+// ─── 7. CommonCrawl Index — URLs from latest web crawl (free, no key) ───
+export async function searchCommonCrawl(keyword: string): Promise<UrlResult[]> {
+  const results: UrlResult[] = [];
+  try {
+    // Use the latest Common Crawl index
+    const indexResp = await axios.get('https://index.commoncrawl.org/collinfo.json', { timeout: 10000 });
+    const latestIndex = Array.isArray(indexResp.data) && indexResp.data.length > 0
+      ? indexResp.data[0]['cdx-api']
+      : null;
+    if (!latestIndex) return results;
+
+    // CommonCrawl needs domain-style queries: *.keyword.tld
+    // Try common TLDs and the keyword as a domain
+    const tlds = ['com', 'net', 'org', 'ma', 'fr', 'io', 'co'];
+    const seen = new Set<string>();
+
+    const queries = [
+      `*.${keyword}.com`,
+      `*.${keyword}.net`,
+      `*.${keyword}.org`,
+      `*.${keyword}.ma`,
+      `*.${keyword}.fr`,
+    ];
+
+    for (const q of queries) {
+      try {
+        const resp = await axios.get(latestIndex, {
+          params: { url: q, output: 'json', limit: 30 },
+          timeout: 15000,
+          validateStatus: (s: number) => s < 500,
+        });
+        if (resp.status !== 404 && typeof resp.data === 'string') {
+          const lines = resp.data.trim().split('\n');
+          for (const line of lines) {
+            try {
+              const obj = JSON.parse(line);
+              const url = obj.url;
+              if (url && !seen.has(url)) {
+                seen.add(url);
+                let domain = '';
+                try { domain = new URL(url).hostname; } catch { domain = url; }
+                results.push({
+                  url,
+                  domain,
+                  source: 'CommonCrawl',
+                  info: obj.mime ? `Type: ${obj.mime}` : undefined,
+                });
+              }
+            } catch {}
+          }
+        }
+      } catch {}
+      if (results.length >= 100) break;
+    }
+    console.log(`[CommonCrawl] ${results.length} results`);
+  } catch (e: any) {
+    console.error(`[CommonCrawl] ${e.message}`);
+    throw new Error(`CommonCrawl: ${e.message}`);
+  }
+  return results;
+}
+
+// ─── 8. Shodan DNS (free tier compatible) ───
 export async function searchShodan(keyword: string, apiKey: string): Promise<UrlResult[]> {
   const results: UrlResult[] = [];
   try {
-    // Try DNS domain lookup (free tier compatible)
     const resp = await axios.get(`https://api.shodan.io/dns/domain/${encodeURIComponent(keyword)}`, {
       params: { key: apiKey },
       timeout: 15000,
@@ -119,7 +298,7 @@ export async function searchShodan(keyword: string, apiKey: string): Promise<Url
       const domain = resp.data.domain || keyword;
       const seen = new Set<string>();
       if (Array.isArray(resp.data.subdomains)) {
-        for (const sub of resp.data.subdomains.slice(0, 50)) {
+        for (const sub of resp.data.subdomains.slice(0, 100)) {
           const fullDomain = `${sub}.${domain}`;
           if (!seen.has(fullDomain)) {
             seen.add(fullDomain);
@@ -133,16 +312,16 @@ export async function searchShodan(keyword: string, apiKey: string): Promise<Url
         }
       }
     }
-    console.log(`[Shodan] Found ${results.length} results for "${keyword}"`);
+    console.log(`[Shodan] ${results.length} results`);
   } catch (e: any) {
     const msg = e.response?.data?.error || e.message;
-    console.error(`[Shodan] Error: ${msg}`);
+    console.error(`[Shodan] ${msg}`);
     throw new Error(`Shodan: ${msg}`);
   }
   return results;
 }
 
-// Censys search (API key required)
+// ─── 8. Censys (API key required) ───
 export async function searchCensys(keyword: string, apiId: string, apiSecret: string): Promise<UrlResult[]> {
   const results: UrlResult[] = [];
   try {
@@ -174,10 +353,10 @@ export async function searchCensys(keyword: string, apiId: string, apiSecret: st
         }
       }
     }
-    console.log(`[Censys] Found ${results.length} results for "${keyword}"`);
+    console.log(`[Censys] ${results.length} results`);
   } catch (e: any) {
     const msg = e.response?.data?.error || e.response?.status || e.message;
-    console.error(`[Censys] Error: ${msg}`);
+    console.error(`[Censys] ${msg}`);
     throw new Error(`Censys: ${msg}`);
   }
   return results;

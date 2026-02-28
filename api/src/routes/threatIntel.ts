@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import axios from 'axios';
 import { logger } from '../utils/logger.js';
-import { searchCensys, searchShodan, searchCrtSh, searchUrlscan, searchHackerTarget } from '../services/urlSearch.js';
+import { searchCensys, searchShodan, searchCrtSh, searchUrlscan, searchHackerTarget, searchWaybackMachine, searchOTX, searchCommonCrawl, searchRapidDNS } from '../services/urlSearch.js';
 
 const router = Router();
 
@@ -121,7 +121,7 @@ router.get('/virustotal/:type/:value', async (req, res) => {
   }
 });
 
-// Real URL search (crt.sh + urlscan.io + Shodan + Censys)
+// Real URL search — 8 sources, free ones run in parallel
 router.get('/urlsearch', async (req, res) => {
   try {
     const { keyword } = req.query;
@@ -134,63 +134,42 @@ router.get('/urlsearch', async (req, res) => {
     let results: { url: string; domain: string; source: string; info?: string }[] = [];
     const errors: string[] = [];
 
-    // crt.sh (free, no key)
-    try {
-      logger.info(`[urlsearch] Querying crt.sh for "${keyword}"...`);
-      const crtResults = await searchCrtSh(keyword);
-      results = results.concat(crtResults.map(r => ({ ...r, source: 'crt.sh' })));
-      logger.info(`[urlsearch] crt.sh: ${crtResults.length} results`);
-    } catch (e: any) {
-      errors.push(`crt.sh: ${e.message}`);
-      logger.error('crt.sh search error', e.message);
-    }
+    // Helper to wrap a search and collect errors
+    const wrap = async (name: string, fn: () => Promise<{ url: string; domain: string; source: string; info?: string }[]>) => {
+      try {
+        logger.info(`[urlsearch] Querying ${name} for "${keyword}"...`);
+        const r = await fn();
+        logger.info(`[urlsearch] ${name}: ${r.length} results`);
+        return r;
+      } catch (e: any) {
+        errors.push(`${name}: ${e.message}`);
+        logger.error(`${name} search error`, e.message);
+        return [];
+      }
+    };
 
-    // urlscan.io (free, no key)
-    try {
-      logger.info(`[urlsearch] Querying urlscan.io for "${keyword}"...`);
-      const urlscanResults = await searchUrlscan(keyword);
-      results = results.concat(urlscanResults.map(r => ({ ...r, source: 'urlscan.io' })));
-      logger.info(`[urlsearch] urlscan.io: ${urlscanResults.length} results`);
-    } catch (e: any) {
-      errors.push(`urlscan.io: ${e.message}`);
-      logger.error('urlscan.io search error', e.message);
-    }
+    // Run all free sources in PARALLEL for speed
+    const freeTasks = [
+      wrap('crt.sh', () => searchCrtSh(keyword)),
+      wrap('urlscan.io', () => searchUrlscan(keyword)),
+      wrap('HackerTarget', () => searchHackerTarget(keyword)),
+      wrap('RapidDNS', () => searchRapidDNS(keyword)),
+      wrap('Wayback Machine', () => searchWaybackMachine(keyword)),
+      wrap('AlienVault OTX', () => searchOTX(keyword)),
+      wrap('CommonCrawl', () => searchCommonCrawl(keyword)),
+    ];
 
-    // HackerTarget (free, no key)
-    try {
-      logger.info(`[urlsearch] Querying HackerTarget for "${keyword}"...`);
-      const htResults = await searchHackerTarget(keyword);
-      results = results.concat(htResults.map(r => ({ ...r, source: 'HackerTarget' })));
-      logger.info(`[urlsearch] HackerTarget: ${htResults.length} results`);
-    } catch (e: any) {
-      errors.push(`HackerTarget: ${e.message}`);
-      logger.error('HackerTarget search error', e.message);
-    }
-
-    // Shodan (API key)
+    // Optionally add API-key sources
     if (shodanKey) {
-      try {
-        logger.info(`[urlsearch] Querying Shodan for "${keyword}"...`);
-        const shodanResults = await searchShodan(keyword, shodanKey);
-        results = results.concat(shodanResults.map(r => ({ ...r, source: 'Shodan' })));
-        logger.info(`[urlsearch] Shodan: ${shodanResults.length} results`);
-      } catch (e: any) {
-        errors.push(`Shodan: ${e.message}`);
-        logger.error('Shodan search error', e.message);
-      }
+      freeTasks.push(wrap('Shodan', () => searchShodan(keyword, shodanKey)));
+    }
+    if (censysId && censysSecret) {
+      freeTasks.push(wrap('Censys', () => searchCensys(keyword, censysId, censysSecret)));
     }
 
-    // Censys (API key)
-    if (censysId && censysSecret) {
-      try {
-        logger.info(`[urlsearch] Querying Censys for "${keyword}"...`);
-        const censysResults = await searchCensys(keyword, censysId, censysSecret);
-        results = results.concat(censysResults.map(r => ({ ...r, source: 'Censys' })));
-        logger.info(`[urlsearch] Censys: ${censysResults.length} results`);
-      } catch (e: any) {
-        errors.push(`Censys: ${e.message}`);
-        logger.error('Censys search error', e.message);
-      }
+    const allResults = await Promise.all(freeTasks);
+    for (const batch of allResults) {
+      results = results.concat(batch);
     }
 
     // Deduplicate by url
