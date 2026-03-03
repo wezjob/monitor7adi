@@ -7,6 +7,7 @@ import { vulnerabilityRouter } from './routes/vulnerability.js';
 import { darkwebRouter } from './routes/darkweb.js';
 import { aiRouter } from './routes/ai.js';
 import { newsRouter } from './routes/news.js';
+import { configRouter } from './routes/config.js';
 import { logger } from './utils/logger.js';
 
 const app = express();
@@ -49,6 +50,7 @@ app.use('/api/vulnerabilities', vulnerabilityRouter);
 app.use('/api/darkweb', darkwebRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api/news', newsRouter);
+app.use('/api/config', configRouter);
 
 // Dashboard stats endpoint
 app.get('/api/dashboard/stats', async (req, res) => {

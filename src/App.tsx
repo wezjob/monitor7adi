@@ -10,7 +10,7 @@ import { AttackSurface } from './pages/AttackSurface';
 import { LiveNews } from './pages/LiveNews';
 import { DataLeaks } from './pages/DataLeaks';
 import { AIAnalyst } from './pages/AIAnalyst';
-import { Settings } from './pages/Settings';
+import { Administration } from './pages/Administration';
 
 function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -36,7 +36,7 @@ function App() {
               <Route path="/news" element={<LiveNews />} />
               <Route path="/data-leaks" element={<DataLeaks />} />
               <Route path="/ai-analyst" element={<AIAnalyst />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/admin" element={<Administration />} />
             </Routes>
           </main>
         </div>

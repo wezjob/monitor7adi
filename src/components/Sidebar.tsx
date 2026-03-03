@@ -28,7 +28,7 @@ const navItems = [
   { path: '/news', icon: Tv, label: 'Live News' },
   { path: '/data-leaks', icon: Database, label: 'Data Leaks' },
   { path: '/ai-analyst', icon: Bot, label: 'AI Analyst' },
-  { path: '/settings', icon: Settings, label: 'Settings' },
+  { path: '/admin', icon: Settings, label: 'Administration' },
 ];
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {
