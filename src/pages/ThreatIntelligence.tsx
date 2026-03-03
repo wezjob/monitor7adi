@@ -1,8 +1,9 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { Shield, Search, RefreshCw, ExternalLink, Link2, Loader2, Globe, AlertTriangle, Clock, Copy, Check } from 'lucide-react';
 import { ThreatLevelBadge } from '../components/ThreatLevelBadge';
 import type { ThreatIntel, IOC } from '../types';
 import axios from 'axios';
+import { fetchThreatReports, fetchIOCs, FEED_REFRESH_INTERVAL } from '../services/threatIntelService';
 
 // URL Search result interface
 interface URLSearchResult {
@@ -18,68 +19,16 @@ interface URLSearchResult {
   description: string;
 }
 
-// Mock data
-const mockThreats: ThreatIntel[] = [
-  {
-    id: '1',
-    type: 'apt',
-    severity: 'critical',
-    title: 'APT29 (Cozy Bear) - New Campaign Targeting Government Sectors',
-    description: 'Russian state-sponsored threat actor APT29 has been observed conducting a sophisticated spear-phishing campaign targeting government and diplomatic entities.',
-    indicators: ['185.215.113.67', 'update-service.com', 'a3b4c5d6e7f8...'],
-    source: 'MISP',
-    timestamp: '2024-02-26T10:30:00Z',
-    tags: ['APT', 'Russia', 'Spear-Phishing', 'Government'],
-    ttps: ['T1566.001', 'T1059.001', 'T1027'],
-  },
-  {
-    id: '2',
-    type: 'malware',
-    severity: 'high',
-    title: 'LockBit 3.0 Ransomware - New Variant Detected',
-    description: 'A new variant of LockBit 3.0 ransomware has been identified with improved evasion techniques and faster encryption capabilities.',
-    indicators: ['bc45f23a...', 'lockbit-decryptor[.]onion'],
-    source: 'VirusTotal',
-    timestamp: '2024-02-26T09:15:00Z',
-    tags: ['Ransomware', 'LockBit', 'Encryption'],
-    ttps: ['T1486', 'T1490', 'T1489'],
-  },
-  {
-    id: '3',
-    type: 'vulnerability',
-    severity: 'critical',
-    title: 'CVE-2024-21762 - FortiOS Out-of-bound Write',
-    description: 'Critical vulnerability in FortiOS SSL VPN allowing unauthenticated remote code execution. Actively exploited in the wild.',
-    indicators: [],
-    source: 'NVD',
-    timestamp: '2024-02-26T08:00:00Z',
-    tags: ['Fortinet', 'VPN', 'RCE', '0-day'],
-  },
-  {
-    id: '4',
-    type: 'campaign',
-    severity: 'high',
-    title: 'PhaaS Operation "Tycoon" - Business Email Compromise',
-    description: 'Large-scale Phishing-as-a-Service operation targeting Microsoft 365 credentials across multiple industries.',
-    indicators: ['login-microsoft365[.]net', 'secure-outlook[.]com'],
-    source: 'URLhaus',
-    timestamp: '2024-02-26T07:45:00Z',
-    tags: ['Phishing', 'BEC', 'Microsoft 365', 'Credential Theft'],
-  },
-];
-
-const mockIOCs: IOC[] = [
-  { id: '1', type: 'ip', value: '185.215.113.67', confidence: 95, firstSeen: '2024-02-20', lastSeen: '2024-02-26', malwareFamily: 'Cobalt Strike', tags: ['C2', 'APT29'] },
-  { id: '2', type: 'domain', value: 'update-service.com', confidence: 90, firstSeen: '2024-02-22', lastSeen: '2024-02-26', tags: ['Phishing', 'APT'] },
-  { id: '3', type: 'hash', value: 'bc45f23a8d912c45e6789b123456789abcdef01234567890abcdef', confidence: 100, firstSeen: '2024-02-25', lastSeen: '2024-02-26', malwareFamily: 'LockBit 3.0', tags: ['Ransomware'] },
-  { id: '4', type: 'url', value: 'https://login-microsoft365.net/oauth/token', confidence: 85, firstSeen: '2024-02-24', lastSeen: '2024-02-26', tags: ['Phishing', 'BEC'] },
-  { id: '5', type: 'ip', value: '103.224.182.251', confidence: 80, firstSeen: '2024-02-23', lastSeen: '2024-02-25', malwareFamily: 'QakBot', tags: ['Botnet', 'Banking'] },
-];
+// Threat data is now fully dynamic (MISP, OTX, URLhaus, AbuseIPDB, CIRCL CVE)
 
 export function ThreatIntelligence() {
   const [activeTab, setActiveTab] = useState<'threats' | 'iocs' | 'urlsearch'>('threats');
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState<string>('all');
+  const [threatReports, setThreatReports] = useState<ThreatIntel[]>([]);
+  const [liveIOCs, setLiveIOCs] = useState<IOC[]>([]);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState<string | null>(null);
   
   // URL Search state
   const [urlKeyword, setUrlKeyword] = useState('');
@@ -96,8 +45,35 @@ export function ThreatIntelligence() {
 
   // API base URL for backend
   const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
-    ? 'http://localhost:3201'
+    ? 'http://localhost:3101'
     : '';
+
+  // Load all feeds (reports + IOCs)
+  const syncAllFeeds = useCallback(async () => {
+    setIsSyncing(true);
+    try {
+      const [reports, iocs] = await Promise.all([
+        fetchThreatReports(),
+        fetchIOCs(),
+      ]);
+      setThreatReports(reports);
+      setLiveIOCs(iocs);
+      setLastSyncTime(new Date().toLocaleTimeString());
+    } catch (e) {
+      // silent
+    }
+    setIsSyncing(false);
+  }, []);
+
+  // Auto-sync on mount + polling every 5 minutes
+  useEffect(() => {
+    syncAllFeeds();
+    const interval = setInterval(syncAllFeeds, FEED_REFRESH_INTERVAL);
+    return () => clearInterval(interval);
+  }, [syncAllFeeds]);
+
+  // Sync manuel via bouton
+  const handleSyncFeeds = () => syncAllFeeds();
 
   // Perform URL search via real APIs
   const performUrlSearch = useCallback(async () => {
@@ -143,7 +119,7 @@ export function ThreatIntelligence() {
     setIsSearchingUrls(false);
   }, [urlKeyword, API_BASE]);
 
-  const filteredThreats = mockThreats.filter(threat => {
+  const filteredThreats = threatReports.filter(threat => {
     const matchesSearch = threat.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
                          threat.description.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesSeverity = severityFilter === 'all' || threat.severity === severityFilter;
@@ -159,11 +135,18 @@ export function ThreatIntelligence() {
             <Shield className="w-7 h-7 text-cyber-accent" />
             Threat Intelligence
           </h1>
-          <p className="text-gray-400 mt-1">Real-time threat feeds from multiple sources</p>
+          <p className="text-gray-400 mt-1">
+            Real-time threat feeds from MISP, OTX, URLhaus, AbuseIPDB, CIRCL CVE
+            {lastSyncTime && <span className="ml-2 text-xs text-gray-500">Last sync: {lastSyncTime}</span>}
+          </p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 bg-cyber-accent text-black rounded-lg font-medium hover:bg-cyber-accent/90 transition-colors">
-          <RefreshCw className="w-4 h-4" />
-          Sync Feeds
+        <button
+          className="flex items-center gap-2 px-4 py-2 bg-cyber-accent text-black rounded-lg font-medium hover:bg-cyber-accent/90 transition-colors disabled:opacity-60"
+          onClick={handleSyncFeeds}
+          disabled={isSyncing}
+        >
+          {isSyncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          {isSyncing ? 'Syncing...' : 'Sync Feeds'}
         </button>
       </div>
 
@@ -177,7 +160,7 @@ export function ThreatIntelligence() {
               : 'text-gray-400 hover:text-white'
           }`}
         >
-          Threat Reports ({mockThreats.length})
+          Threat Reports ({threatReports.length})
         </button>
         <button
           onClick={() => setActiveTab('iocs')}
@@ -187,7 +170,7 @@ export function ThreatIntelligence() {
               : 'text-gray-400 hover:text-white'
           }`}
         >
-          IOCs ({mockIOCs.length})
+          IOCs ({liveIOCs.length})
         </button>
         <button
           onClick={() => setActiveTab('urlsearch')}
@@ -310,7 +293,7 @@ export function ThreatIntelligence() {
               </tr>
             </thead>
             <tbody className="divide-y divide-cyber-border">
-              {mockIOCs.map((ioc) => (
+              {liveIOCs.map((ioc) => (
                 <tr key={ioc.id} className="hover:bg-cyber-bg/50 transition-colors">
                   <td className="px-4 py-3">
                     <span className={`text-xs px-2 py-1 rounded uppercase font-medium ${

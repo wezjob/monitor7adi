@@ -2,57 +2,71 @@ import { Router } from 'express';
 import axios from 'axios';
 import { logger } from '../utils/logger.js';
 import { searchCensys, searchShodan, searchCrtSh, searchUrlscan, searchHackerTarget, searchWaybackMachine, searchOTX, searchCommonCrawl, searchRapidDNS } from '../services/urlSearch.js';
+import { aggregateAllFeeds } from '../services/threatFeeds.js';
 
 const router = Router();
 
-// Get all threat intelligence
+// Get all threat intelligence (live feeds)
 router.get('/', async (req, res) => {
   try {
-    // Mock data - in production, aggregate from MISP, OTX, etc.
-    const threats = [
-      {
-        id: '1',
-        type: 'apt',
-        severity: 'critical',
-        title: 'APT29 (Cozy Bear) - New Campaign Targeting Government Sectors',
-        description: 'Russian state-sponsored threat actor conducting sophisticated spear-phishing campaigns.',
-        indicators: ['185.215.113.67', 'update-service.com'],
-        source: 'MISP',
-        timestamp: new Date().toISOString(),
-        tags: ['APT', 'Russia', 'Spear-Phishing'],
-        ttps: ['T1566.001', 'T1059.001']
-      },
-      {
-        id: '2',
-        type: 'malware',
-        severity: 'high',
-        title: 'LockBit 3.0 Ransomware - New Variant',
-        description: 'New variant with improved evasion techniques.',
-        indicators: ['bc45f23a...'],
-        source: 'VirusTotal',
-        timestamp: new Date().toISOString(),
-        tags: ['Ransomware', 'LockBit'],
-        ttps: ['T1486', 'T1490']
-      }
-    ];
-    
-    res.json(threats);
+    const { reports, sources, errors } = await aggregateAllFeeds();
+    res.json(reports);
   } catch (error) {
     logger.error('Error fetching threat intel', error);
     res.status(500).json({ error: 'Failed to fetch threat intelligence' });
   }
 });
 
-// Get IOCs
+// Get threat reports (used by frontend Sync Feeds)
+router.get('/reports', async (req, res) => {
+  try {
+    const { reports, sources, errors } = await aggregateAllFeeds();
+    logger.info(`[/reports] Returning ${reports.length} reports from: ${sources.join(', ')}`);
+    res.json({ reports, sources, errors: errors.length > 0 ? errors : undefined });
+  } catch (error) {
+    logger.error('Error fetching threat reports', error);
+    res.status(500).json({ error: 'Failed to fetch threat reports' });
+  }
+});
+
+// Get IOCs (extracted from live feeds)
 router.get('/iocs', async (req, res) => {
   try {
-    const iocs = [
-      { id: '1', type: 'ip', value: '185.215.113.67', confidence: 95, malwareFamily: 'Cobalt Strike', tags: ['C2', 'APT29'] },
-      { id: '2', type: 'domain', value: 'update-service.com', confidence: 90, tags: ['Phishing', 'APT'] },
-      { id: '3', type: 'hash', value: 'bc45f23a8d912c45e6789b123456789abcdef', confidence: 100, malwareFamily: 'LockBit 3.0', tags: ['Ransomware'] }
-    ];
-    
-    res.json(iocs);
+    const { reports } = await aggregateAllFeeds();
+    // Extract IOCs from all reports
+    const iocs: any[] = [];
+    let idCounter = 1;
+    for (const report of reports) {
+      for (const indicator of report.indicators) {
+        if (!indicator) continue;
+        let type: string = 'unknown';
+        if (/^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(indicator)) type = 'ip';
+        else if (/^https?:\/\//.test(indicator)) type = 'url';
+        else if (/^[a-fA-F0-9]{32,}$/.test(indicator)) type = 'hash';
+        else if (indicator.includes('.') && !indicator.includes('/')) type = 'domain';
+        else type = 'other';
+
+        iocs.push({
+          id: String(idCounter++),
+          type,
+          value: indicator,
+          confidence: report.severity === 'critical' ? 95 : report.severity === 'high' ? 85 : 70,
+          malwareFamily: report.type === 'malware' ? report.title.split(' ')[0] : undefined,
+          tags: report.tags.slice(0, 3),
+          firstSeen: report.timestamp,
+          lastSeen: report.timestamp,
+          source: report.source,
+        });
+      }
+    }
+    // Deduplicate by value
+    const seen = new Set<string>();
+    const deduped = iocs.filter(ioc => {
+      if (seen.has(ioc.value)) return false;
+      seen.add(ioc.value);
+      return true;
+    });
+    res.json(deduped.slice(0, 50));
   } catch (error) {
     logger.error('Error fetching IOCs', error);
     res.status(500).json({ error: 'Failed to fetch IOCs' });
