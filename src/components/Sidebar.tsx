@@ -9,6 +9,7 @@ import {
   Database, 
   Bot, 
   Settings,
+  Compass,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -28,6 +29,7 @@ const navItems = [
   { path: '/news', icon: Tv, label: 'Live News' },
   { path: '/data-leaks', icon: Database, label: 'Data Leaks' },
   { path: '/ai-analyst', icon: Bot, label: 'AI Analyst' },
+  { path: '/osint-tools', icon: Compass, label: 'OSINT Tools' },
   { path: '/admin', icon: Settings, label: 'Administration' },
 ];
 
