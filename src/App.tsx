@@ -12,6 +12,7 @@ import { DataLeaks } from './pages/DataLeaks';
 import { AIAnalyst } from './pages/AIAnalyst';
 import { Administration } from './pages/Administration';
 import { OsintTools } from './pages/OsintTools';
+import { OsintDashboard } from './pages/OsintDashboard';
 
 function App() {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -38,6 +39,7 @@ function App() {
               <Route path="/data-leaks" element={<DataLeaks />} />
               <Route path="/ai-analyst" element={<AIAnalyst />} />
               <Route path="/osint-tools" element={<OsintTools />} />
+              <Route path="/osint-search" element={<OsintDashboard />} />
               <Route path="/admin" element={<Administration />} />
             </Routes>
           </main>

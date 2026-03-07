@@ -10,6 +10,7 @@ import {
   Bot, 
   Settings,
   Compass,
+  SearchCode,
   ChevronLeft,
   ChevronRight
 } from 'lucide-react';
@@ -30,6 +31,7 @@ const navItems = [
   { path: '/data-leaks', icon: Database, label: 'Data Leaks' },
   { path: '/ai-analyst', icon: Bot, label: 'AI Analyst' },
   { path: '/osint-tools', icon: Compass, label: 'OSINT Tools' },
+  { path: '/osint-search', icon: SearchCode, label: 'OSINT Search' },
   { path: '/admin', icon: Settings, label: 'Administration' },
 ];
 

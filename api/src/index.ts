@@ -9,6 +9,8 @@ import { aiRouter } from './routes/ai.js';
 import { newsRouter } from './routes/news.js';
 import { configRouter } from './routes/config.js';
 import { usersRouter } from './routes/users.js';
+
+import { osintRouter } from './routes/osint.js';
 import { logger } from './utils/logger.js';
 
 const app = express();
@@ -46,6 +48,8 @@ app.get('/health', (req, res) => {
 });
 
 // API Routes
+
+app.use('/api/osint', osintRouter);
 app.use('/api/threat-intel', threatIntelRouter);
 app.use('/api/vulnerabilities', vulnerabilityRouter);
 app.use('/api/darkweb', darkwebRouter);
