@@ -22,52 +22,38 @@ router.get('/', async (req, res) => {
   try {
     const { limit = 20, category } = req.query;
     
-    // Mock news data (in production, aggregate from RSS feeds)
-    const news = [
-      {
-        id: '1',
-        title: 'Critical Zero-Day in Popular VPN Software Actively Exploited',
-        description: 'Security researchers have discovered a critical vulnerability being actively exploited...',
-        url: 'https://example.com/news/1',
-        source: 'Krebs on Security',
-        publishedAt: new Date().toISOString(),
-        category: 'vulnerability'
-      },
-      {
-        id: '2',
-        title: 'Major Healthcare Provider Suffers Ransomware Attack',
-        description: 'A leading healthcare organization has been hit by a sophisticated ransomware attack...',
-        url: 'https://example.com/news/2',
-        source: 'BleepingComputer',
-        publishedAt: new Date(Date.now() - 3600000).toISOString(),
-        category: 'breach'
-      },
-      {
-        id: '3',
-        title: 'New APT Group Targets Financial Sector in Europe',
-        description: 'Researchers identify a new advanced persistent threat group conducting targeted attacks...',
-        url: 'https://example.com/news/3',
-        source: 'The Hacker News',
-        publishedAt: new Date(Date.now() - 7200000).toISOString(),
-        category: 'apt'
-      },
-      {
-        id: '4',
-        title: 'CISA Adds 3 New CVEs to Known Exploited Vulnerabilities Catalog',
-        description: 'The agency has updated its catalog with three new actively exploited vulnerabilities...',
-        url: 'https://example.com/news/4',
-        source: 'CISA',
-        publishedAt: new Date(Date.now() - 10800000).toISOString(),
-        category: 'vulnerability'
-      }
-    ];
+    // Fetch live RSS feeds
+    const results = await Promise.allSettled(
+      RSS_FEEDS.map(async (feed) => {
+        try {
+          const data = await parser.parseURL(feed.url);
+          return data.items.slice(0, 5).map(item => ({
+            id: Buffer.from(item.link || item.title || '').toString('base64').slice(0, 16),
+            title: item.title || 'No title',
+            description: item.contentSnippet?.substring(0, 300) || item.content?.substring(0, 300) || '',
+            url: item.link || '',
+            source: feed.name,
+            publishedAt: item.pubDate || item.isoDate || new Date().toISOString(),
+            category: feed.category
+          }));
+        } catch {
+          return [];
+        }
+      })
+    );
     
-    let filtered = news;
+    // Flatten and sort by date
+    let news = results
+      .filter((r): r is PromiseFulfilledResult<any[]> => r.status === 'fulfilled')
+      .flatMap(r => r.value)
+      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
+    
+    // Filter by category if specified
     if (category) {
-      filtered = news.filter(n => n.category === category);
+      news = news.filter(n => n.category === category);
     }
     
-    res.json(filtered.slice(0, Number(limit)));
+    res.json(news.slice(0, Number(limit)));
   } catch (error) {
     logger.error('Error fetching news', error);
     res.status(500).json({ error: 'Failed to fetch news' });
