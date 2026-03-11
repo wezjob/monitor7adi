@@ -39,6 +39,28 @@ app.use((req, res, next) => {
   next();
 });
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    name: 'Monitor7adi API',
+    version: '1.0.0',
+    status: 'running',
+    frontend: 'http://localhost:5173',
+    endpoints: {
+      health: '/health',
+      osint: '/api/osint',
+      threatIntel: '/api/threat-intel',
+      vulnerabilities: '/api/vulnerabilities',
+      darkweb: '/api/darkweb',
+      ai: '/api/ai',
+      news: '/api/news',
+      config: '/api/config',
+      users: '/api/users',
+      dashboard: '/api/dashboard/stats'
+    }
+  });
+});
+
 // Health check
 app.get('/health', (req, res) => {
   res.json({ 
